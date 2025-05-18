@@ -1,6 +1,6 @@
 name: screen_share_plugin
 description: "A Flutter plugin for Android screen sharing using WebRTC and native Kotlin code."
-version: 0.0.1
+version: 0.0.2
 homepage: https://github.com/ykofficial15/screen_share_plugin.git
 
 environment:

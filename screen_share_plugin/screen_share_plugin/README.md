@@ -1,5 +1,3 @@
-
-````markdown
 # screen_share_plugin
 
 A Flutter plugin that enables **real-time screen sharing on Android** using native Kotlin code and displays the stream via [flutter_webrtc](https://pub.dev/packages/flutter_webrtc).
@@ -7,7 +5,7 @@ A Flutter plugin that enables **real-time screen sharing on Android** using nati
 ## Features
 
 - ✅ Real-time screen sharing on Android.
-- ✅ Screen preview powered by `flutter_webrtc`.
+- ✅ Screen preview powered by `flutter_webrtc`. (Thanks to the flutter_webrtc team).
 - ✅ Native Android code written in **Kotlin**.
 - ✅ Tested with **Flutter 3.29** and **compile SDK version up to 35** to reduce compatibility issues.
 
@@ -19,16 +17,7 @@ Add the plugin to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  screen_share_plugin:
-    git:
-      url: https://github.com/yourusername/screen_share_plugin.git
-````
-
-Or once published:
-
-```yaml
-dependencies:
-  screen_share_plugin: ^0.0.1
+  screen_share_plugin: ^0.0.2
 ```
 
 ### 2. Android Setup
@@ -37,8 +26,9 @@ Ensure you are using:
 
 * **Flutter SDK:** `3.29.0`
 * **compileSdkVersion:** `35` (in your `android/app/build.gradle`)
+* **Allow Permissions from app info:** `Notifications, Camera, Microphone for screen sharing`
 
-### 3. Permissions and Manifest Configuration
+### 3. Permissions and Manifest Configuration (Optional)
 
 Add the required permissions and service declaration to your `AndroidManifest.xml`.
 If your configuration doesn't work out of the box, try adding these manually:
@@ -89,9 +79,6 @@ If your configuration doesn't work out of the box, try adding these manually:
   </application>
 </manifest>
 ```
-
-> ⚠️ Some permissions like `RECORD_AUDIO` and `CAMERA` require runtime permissions on Android 6.0+.
-
 ---
 
 ## Example Usage
@@ -253,6 +240,8 @@ MIT License
 ---
 
 ## Support
+
+If you like this plugin, [support me on Buy Me A Coffee](https://www.buymeacoffee.com/yogxworld).
 
 If this plugin helped you, please consider **subscribing to my YouTube channel**
 🎥 [Yogx World](https://www.youtube.com/@yogxworld15)

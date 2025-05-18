@@ -1,0 +1,2 @@
+F:/screen_share_plugin/screen_share_plugin/example/android/app/.cxx/Debug/55b6r2s5/armeabi-v7a/CMakeFiles/edit_cache.dir
+F:/screen_share_plugin/screen_share_plugin/example/android/app/.cxx/Debug/55b6r2s5/armeabi-v7a/CMakeFiles/rebuild_cache.dir

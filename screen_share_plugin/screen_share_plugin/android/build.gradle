@@ -1,15 +1,17 @@
 group = "com.example.screen_share_plugin"
 version = "1.0-SNAPSHOT"
 
+// Kept in Groovy so the same file works in host apps on AGP 8.x (which need
+// the Kotlin Gradle plugin applied) and on AGP 9+ (which compiles Kotlin
+// itself and rejects the separate plugin).
 buildscript {
-    ext.kotlin_version = "1.8.22"
+    ext.kotlin_version = "2.1.0"
     repositories {
         google()
         mavenCentral()
     }
-
     dependencies {
-        classpath("com.android.tools.build:gradle:8.1.0")
+        classpath("com.android.tools.build:gradle:8.7.3")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
 }
@@ -22,22 +24,24 @@ allprojects {
 }
 
 apply plugin: "com.android.library"
-apply plugin: "kotlin-android"
+
+// AGP 9+ compiles Kotlin itself unless the app opts out with
+// `android.builtInKotlin=false` (Flutter's app template does). In every other
+// case the Kotlin Gradle plugin has to be applied here.
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')[0].toInteger()
+def builtInKotlin = agpMajor >= 9 &&
+        (findProperty("android.builtInKotlin")?.toString() ?: "true").toBoolean()
+if (!builtInKotlin) {
+    apply plugin: "kotlin-android"
+}
 
 android {
-    if (project.android.hasProperty("namespace")) {
-        namespace = "com.example.screen_share_plugin"
-    }
-
-    compileSdk = 34
+    namespace = "com.example.screen_share_plugin"
+    compileSdk = 36
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     sourceSets {
@@ -46,23 +50,24 @@ android {
     }
 
     defaultConfig {
+        // Android 5.0. Apps built with Flutter 3.35+ start at API 24 anyway;
+        // the native code below guards every newer API by version.
         minSdk = 21
-    }
-
-    dependencies {
-        testImplementation("org.jetbrains.kotlin:kotlin-test")
-        testImplementation("org.mockito:mockito-core:5.0.0")
     }
 
     testOptions {
         unitTests.all {
             useJUnitPlatform()
-
-            testLogging {
-               events "passed", "skipped", "failed", "standardOut", "standardError"
-               outputs.upToDateWhen {false}
-               showStandardStreams = true
-            }
         }
     }
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+}
+
+dependencies {
+    implementation("androidx.core:core:1.13.1")
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.mockito:mockito-core:5.0.0")
 }

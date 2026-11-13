@@ -1,243 +1,154 @@
 # screen_share_plugin
 
-A Flutter plugin that enables **real-time screen sharing on Android** using native Kotlin code and displays the stream via [flutter_webrtc](https://pub.dev/packages/flutter_webrtc).
+Screen sharing for Flutter on **Android, iOS, macOS, Windows, Linux and Web**, with one API.
 
-## Features
+Capture is done by [flutter_webrtc](https://pub.dev/packages/flutter_webrtc), so the result is a normal WebRTC `MediaStream`. You can preview it with `RTCVideoView` or send it to a peer with an `RTCPeerConnection`. This plugin adds the platform work around that:
 
-- ✅ Real-time screen sharing on Android.
-- ✅ Screen preview powered by `flutter_webrtc`. (Thanks to the flutter_webrtc team).
-- ✅ Native Android code written in **Kotlin**.
-- ✅ Tested with **Flutter 3.29** and **compile SDK version up to 35** to reduce compatibility issues.
+- **Android:** the permission flow and the `mediaProjection` foreground service that Android requires, in the right order for every version from 5.0 (API 21) to 16.
+- **macOS / Windows / Linux:** listing screens and windows so your app can show its own picker.
+- **iOS:** in-app capture through ReplayKit, or whole-device capture through a Broadcast Upload Extension.
+- **Web:** the browser's own picker, with optional tab or system audio.
 
-## Getting Started
+| Platform | What gets captured | Who shows the picker | System audio |
+|---|---|---|---|
+| Android 5.0+ | Entire screen or one app (Android 14+) | Android system dialog | – |
+| iOS 13+ | This app (default) or the whole device (Broadcast Extension) | iOS | – |
+| macOS 10.15+ | Any screen or window | Your app (`getSources`) | – |
+| Windows | Any screen or window | Your app (`getSources`) | ✓ |
+| Linux | Any screen or window | Your app (`getSources`) | ✓ (PulseAudio) |
+| Web | Tab, window or screen | The browser | ✓ (Chrome / Edge) |
 
-### 1. Installation
-
-Add the plugin to your `pubspec.yaml`:
+## Installation
 
 ```yaml
 dependencies:
-  screen_share_plugin: ^0.0.2
+  screen_share_plugin: ^1.0.0
 ```
 
-### 2. Android Setup
+`flutter_webrtc` comes in as a dependency, and the classes you need from it (`MediaStream`, `RTCVideoRenderer`, `RTCVideoView`, …) are re-exported. Importing `package:screen_share_plugin/screen_share_plugin.dart` is enough.
 
-Ensure you are using:
-
-* **Flutter SDK:** `3.29.0`
-* **compileSdkVersion:** `35` (in your `android/app/build.gradle`)
-* **Allow Permissions from app info:** `Notifications, Camera, Microphone for screen sharing`
-
-### 3. Permissions and Manifest Configuration (Optional)
-
-Add the required permissions and service declaration to your `AndroidManifest.xml`.
-If your configuration doesn't work out of the box, try adding these manually:
-
-```xml
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Permissions required for screen sharing -->
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-  <uses-permission android:name="android.permission.RECORD_AUDIO" />
-  <uses-permission android:name="android.permission.CAMERA" />
-  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-
-  <application
-      android:label="screen_share_plugin_example"
-      android:name="${applicationName}"
-      android:icon="@mipmap/ic_launcher">
-
-      <!-- Foreground service declaration for media projection -->
-      <service
-          android:name="com.example.screen_share_plugin.ScreenCaptureService"
-          android:enabled="true"
-          android:exported="false"
-          android:foregroundServiceType="mediaProjection" />
-
-      <activity
-          android:name=".MainActivity"
-          android:exported="true"
-          android:launchMode="singleTop"
-          android:theme="@style/LaunchTheme"
-          android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-          android:hardwareAccelerated="true"
-          android:windowSoftInputMode="adjustResize">
-
-          <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme" />
-
-          <intent-filter>
-              <action android:name="android.intent.action.MAIN" />
-              <category android:name="android.intent.category.LAUNCHER" />
-          </intent-filter>
-      </activity>
-
-      <meta-data
-          android:name="flutterEmbedding"
-          android:value="2" />
-  </application>
-</manifest>
-```
----
-
-## Example Usage
+## Usage
 
 ```dart
-import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:screen_share_plugin/screen_share_plugin.dart';
 
-void main() {
-  runApp(const MyApp());
+final renderer = RTCVideoRenderer();
+await renderer.initialize();
+
+try {
+  // On macOS / Windows / Linux you may pass a `source:` from
+  // ScreenSharePlugin.getSources(); without one, the primary screen is used.
+  final stream = await ScreenSharePlugin.startScreenShare(
+    options: const ScreenShareOptions(audio: true),
+    onStopped: () => print('Sharing ended'),
+  );
+  renderer.srcObject = stream; // show it with RTCVideoView(renderer)
+  // ...or add stream.getTracks() to an RTCPeerConnection.
+} on ScreenShareException catch (e) {
+  // e.code is PERMISSION_DENIED, UNSUPPORTED, NO_SOURCE or CAPTURE_FAILED
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+await ScreenSharePlugin.stopScreenShare();
+```
 
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: ScreenShareDemo(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
-}
+### Letting the user choose a screen or window (desktop)
 
-class ScreenShareDemo extends StatefulWidget {
-  const ScreenShareDemo({super.key});
-
-  @override
-  State<ScreenShareDemo> createState() => _ScreenShareDemoState();
-}
-
-class _ScreenShareDemoState extends State<ScreenShareDemo> {
-  bool _isSharing = false;
-  String _status = "Idle";
-  MediaStream? _localStream;
-  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeRenderer();
-  }
-
-  Future<void> _initializeRenderer() async {
-    await _localRenderer.initialize();
-  }
-
-  Future<void> _startScreenSharing() async {
-    try {
-      setState(() {
-        _status = "Requesting permission...";
-      });
-
-      // Start the screen share plugin
-      await ScreenSharePlugin.startScreenShare();
-
-      // After starting the service, grab the display media
-      final mediaConstraints = <String, dynamic>{
-        'audio': false,
-        'video': {
-          'mandatory': {
-            'minWidth': 640,
-            'minHeight': 480,
-            'minFrameRate': 30,
-          },
-          'facingMode': 'user',
-          'optional': [],
-        }
-      };
-
-      _localStream =
-          await navigator.mediaDevices.getDisplayMedia(mediaConstraints);
-      _localRenderer.srcObject = _localStream;
-
-      setState(() {
-        _isSharing = true;
-        _status = "Screen sharing active";
-      });
-    } catch (e) {
-      setState(() {
-        _status = "Error: ${e.toString()}";
-      });
-    }
-  }
-
-  Future<void> _stopScreenSharing() async {
-    try {
-      await ScreenSharePlugin.stopScreenShare();
-
-      setState(() {
-        _isSharing = false;
-        _status = "Screen sharing stopped";
-      });
-
-      _localStream?.dispose();
-      _localRenderer.srcObject = null;
-    } catch (e) {
-      setState(() {
-        _status = "Error: ${e.toString()}";
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _localStream?.dispose();
-    _localRenderer.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Screen Sharing Plugin Example"),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _status,
-                style: const TextStyle(fontSize: 18),
-              ),
-              const SizedBox(height: 30),
-              _isSharing
-                  ? SizedBox(
-                      width: 640,
-                      height: 480,
-                      child: RTCVideoView(_localRenderer),
-                    )
-                  : const Center(child: Text("No Screen Sharing")),
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                icon: Icon(_isSharing ? Icons.stop : Icons.screen_share),
-                label:
-                    Text(_isSharing ? "Stop Sharing" : "Start Screen Sharing"),
-                onPressed:
-                    _isSharing ? _stopScreenSharing : _startScreenSharing,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+```dart
+if (ScreenSharePlugin.supportsSourceSelection) {
+  final sources = await ScreenSharePlugin.getSources(
+    types: [SourceType.Screen, SourceType.Window],
+  );
+  // Show sources[i].name and sources[i].thumbnail in your own UI, then:
+  await ScreenSharePlugin.startScreenShare(source: chosen);
 }
 ```
 
----
+The example app includes a ready-made picker dialog (`SourcePickerDialog`).
+
+### Reacting to sharing ending
+
+The user can end sharing outside your app, from the browser's "Stop sharing" bar, by closing the shared window, or from the system UI. Listen to `ScreenSharePlugin.sharing` (a `ValueNotifier<bool>`) or pass `onStopped`.
+
+### API
+
+| Member | Description |
+|---|---|
+| `startScreenShare({options, source, onStopped})` | Starts capture and returns the `MediaStream`. Stops any running share first. |
+| `stopScreenShare()` | Stops capture and releases platform resources. Safe to call at any time. |
+| `getSources({types, thumbnailSize})` | Desktop only: lists screens and windows with thumbnails. |
+| `sharing` | `ValueNotifier<bool>` that is true while a share is running. |
+| `currentStream`, `isSharing` | The current share, if any. |
+| `isSupported`, `supportsSourceSelection` | Platform capability checks. |
+
+`ScreenShareOptions`: `audio`, `frameRate`, `width`/`height` (Web), `androidNotificationTitle`/`androidNotificationText`, `androidFullScreenOnly` (Android 14+), `iosUseBroadcastExtension`.
+
+## Platform setup
+
+### Android
+
+No manual setup is needed. The plugin's manifest adds the `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION` and `POST_NOTIFICATIONS` permissions, plus the foreground service declaration.
+
+When sharing starts, the user sees:
+
+1. **Android 13+:** a notification permission prompt. Sharing still works if they decline; the notification just isn't shown.
+2. The system "Share your screen?" dialog, **shown once**.
+3. A persistent "Your screen is being shared" notification while sharing.
+
+The plugin's minimum is API 21. Apps built with recent Flutter versions start at API 24 anyway. The plugin works with host apps on Android Gradle Plugin 8.x and 9.x.
+
+### iOS
+
+**In-app capture (default)** needs no setup. Only your app's own screen is captured.
+
+**Whole-device capture:** set `ScreenShareOptions(iosUseBroadcastExtension: true)`, then:
+
+1. In Xcode, add a **Broadcast Upload Extension** target to the Runner project.
+2. Give both Runner and the extension the same **App Group** (for example `group.com.yourcompany.yourapp`).
+3. In `Runner/Info.plist`, add:
+   ```xml
+   <key>RTCAppGroupIdentifier</key>
+   <string>group.com.yourcompany.yourapp</string>
+   <key>RTCScreenSharingExtension</key>
+   <string>com.yourcompany.yourapp.BroadcastExtension</string>
+   ```
+4. Implement the extension's `SampleHandler` as described in the [flutter_webrtc iOS screen-sharing guide](https://github.com/flutter-webrtc/flutter-webrtc/wiki/iOS-Screen-Sharing).
+
+### macOS
+
+The first time you capture, macOS asks the user to allow **Screen Recording** under System Settings → Privacy & Security. The app has to be **restarted** after permission is granted; this is a macOS rule. Until then, `getSources()` returns an empty list.
+
+If your app is sandboxed and will also send the stream over the network, add `com.apple.security.network.client` to its entitlements.
+
+### Windows
+
+No setup is needed. Pass `audio: true` to capture system audio through WASAPI loopback.
+
+### Linux
+
+For system audio, install the PulseAudio development package before building (`sudo apt install libpulse-dev`). Without it, video still works.
+
+### Web
+
+The page must be served over HTTPS (or from `localhost`). Tab and system audio are supported in Chromium-based browsers; Safari and Firefox capture video only.
+
+## Migrating from 0.0.x
+
+`startScreenShare()` now starts the capture itself and returns the `MediaStream`. Remove your own `navigator.mediaDevices.getDisplayMedia(...)` call:
+
+```dart
+// 0.0.x
+await ScreenSharePlugin.startScreenShare();
+final stream = await navigator.mediaDevices.getDisplayMedia({...});
+
+// 1.0.0
+final stream = await ScreenSharePlugin.startScreenShare();
+```
+
+You can also remove the permissions and service you added to `AndroidManifest.xml` by hand; the plugin now declares them itself.
 
 ## License
 
-MIT License
-
----
+MIT
 
 ## Support
 
@@ -245,5 +156,3 @@ If you like this plugin, [support me on Buy Me A Coffee](https://www.buymeacoffe
 
 If this plugin helped you, please consider **subscribing to my YouTube channel**
 🎥 [Yogx World](https://www.youtube.com/@yogxworld15)
-
----
